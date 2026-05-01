@@ -133,4 +133,9 @@ public interface DeviceService extends BaseService<DeviceEntity> {
      */
     Object callDeviceTool(String deviceId, String toolName, Map<String, Object> arguments);
 
+    /**
+     * 向在线设备发送文本对话
+     */
+    String sendTextChat(Long userId, String deviceId, String text, Boolean interrupt);
+
 }

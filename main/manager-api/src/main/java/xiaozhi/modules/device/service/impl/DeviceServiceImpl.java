@@ -5,6 +5,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
@@ -14,6 +15,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import javax.crypto.Mac;
@@ -23,6 +25,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -42,6 +45,8 @@ import cn.hutool.http.HttpRequest;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -67,13 +72,21 @@ import xiaozhi.modules.device.service.DeviceService;
 import xiaozhi.modules.device.service.OtaService;
 import xiaozhi.modules.device.vo.UserShowDeviceListVO;
 import xiaozhi.modules.security.user.SecurityUser;
+import xiaozhi.modules.sys.dto.ServerActionPayloadDTO;
+import xiaozhi.modules.sys.dto.ServerActionResponseDTO;
+import xiaozhi.modules.sys.enums.ServerActionEnum;
 import xiaozhi.modules.sys.service.SysParamsService;
 import xiaozhi.modules.sys.service.SysUserUtilService;
+import xiaozhi.modules.sys.utils.WebSocketClientManager;
 
 @Slf4j
 @Service
 @AllArgsConstructor
 public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> implements DeviceService {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    static {
+        OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    }
 
     private final DeviceDao deviceDao;
     private final SysUserUtilService sysUserUtilService;
@@ -871,5 +884,106 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
             }
         }
         return null;
+    }
+
+    @Override
+    public String sendTextChat(Long userId, String deviceId, String text, Boolean interrupt) {
+        DeviceEntity device = baseDao.selectById(deviceId);
+        if (device == null) {
+            throw new RenException(ErrorCode.DEVICE_NOT_EXIST);
+        }
+        if (!device.getUserId().equals(userId)) {
+            throw new RenException(ErrorCode.NO_PERMISSION);
+        }
+
+        String normalizedText = text == null ? "" : text.trim();
+        if (StringUtils.isBlank(normalizedText)) {
+            throw new RenException("文本内容不能为空");
+        }
+        if (StringUtils.isBlank(device.getMacAddress())) {
+            throw new RenException("设备缺少 MAC 地址，无法发送文本对话");
+        }
+
+        String wsText = sysParamsService.getValue(Constant.SERVER_WEBSOCKET, true);
+        if (StringUtils.isBlank(wsText)) {
+            throw new RenException(ErrorCode.SERVER_WEBSOCKET_NOT_CONFIGURED);
+        }
+
+        for (String targetWs : Arrays.stream(wsText.split(";"))
+                .map(String::trim)
+                .filter(StringUtils::isNotBlank)
+                .toList()) {
+            if (emitTextChatByWs(targetWs, device.getMacAddress(), normalizedText, interrupt == null || interrupt)) {
+                return targetWs;
+            }
+        }
+
+        throw new RenException("设备当前不在线或文本消息发送失败");
+    }
+
+    private Boolean emitTextChatByWs(String targetWsUri, String deviceMacAddress, String text, boolean interrupt) {
+        String serverSecret = sysParamsService.getValue(Constant.SERVER_SECRET, true);
+
+        String adminDeviceId = UUID.randomUUID().toString();
+        String clientId = UUID.randomUUID().toString();
+
+        String redisKey = RedisKeys.getTmpRegisterMacKey(adminDeviceId);
+        redisUtils.set(redisKey, "true", 300);
+
+        WebSocketHttpHeaders headers = new WebSocketHttpHeaders();
+        headers.add("device-id", adminDeviceId);
+        headers.add("client-id", clientId);
+        headers.add("x-server-control", "true");
+
+        try {
+            String token = generateWebSocketToken(clientId, adminDeviceId);
+            headers.add("authorization", "Bearer " + token);
+        } catch (Exception e) {
+            throw new RenException(ErrorCode.WEB_SOCKET_CONNECT_FAILED);
+        }
+
+        try (WebSocketClientManager client = new WebSocketClientManager.Builder()
+                .connectTimeout(3, TimeUnit.SECONDS)
+            .maxSessionDuration(8, TimeUnit.SECONDS)
+                .uri(targetWsUri)
+                .headers(headers)
+                .build()) {
+            client.sendJson(ServerActionPayloadDTO.build(
+                    ServerActionEnum.TEXT_CHAT,
+                    Map.of(
+                            "secret", serverSecret,
+                            "device_id", deviceMacAddress,
+                            "text", text,
+                            "interrupt", interrupt)));
+
+            List<String> responses = client.listener(this::isTextChatResponse);
+            for (String responseText : responses) {
+                ServerActionResponseDTO response = parseServerActionResponse(responseText);
+                if (response != null && Boolean.TRUE.equals(ServerActionResponseDTO.isSuccess(response))) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("设备文本消息投递失败, targetWs={}, deviceMacAddress={}, error={}",
+                    targetWsUri, deviceMacAddress, e.getMessage());
+        }
+        return false;
+    }
+
+    private boolean isTextChatResponse(String jsonText) {
+        ServerActionResponseDTO response = parseServerActionResponse(jsonText);
+        if (response == null || response.getContent() == null) {
+            return false;
+        }
+        Object action = response.getContent().get("action");
+        return action != null && ServerActionEnum.TEXT_CHAT.getValue().equals(String.valueOf(action));
+    }
+
+    private ServerActionResponseDTO parseServerActionResponse(String jsonText) {
+        try {
+            return OBJECT_MAPPER.readValue(jsonText, ServerActionResponseDTO.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

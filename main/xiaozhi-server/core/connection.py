@@ -24,7 +24,9 @@ from core.utils.modules_initialize import (
     initialize_tts,
     initialize_asr,
 )
-from core.handle.reportHandle import report, enqueue_tool_report
+from core.handle.abortHandle import handleAbortMessage
+from core.handle.receiveAudioHandle import startToChat
+from core.handle.reportHandle import report, enqueue_tool_report, enqueue_user_report
 from core.providers.tts.default import DefaultTTS
 from concurrent.futures import ThreadPoolExecutor
 from core.utils.dialogue import Message, Dialogue
@@ -165,6 +167,7 @@ class ConnectionHandler:
 
         # 标记连接是否来自MQTT
         self.conn_from_mqtt_gateway = False
+        self.is_server_control_connection = False
 
         # 初始化提示词管理器
         self.prompt_manager = PromptManager(self.config, self.logger)
@@ -188,9 +191,14 @@ class ConnectionHandler:
             )
 
             self.device_id = self.headers.get("device-id", None)
+            self.is_server_control_connection = (
+                str(self.headers.get("x-server-control", "")).lower() == "true"
+            )
 
             # 认证通过,继续处理
             self.websocket = ws
+            if self.server and not self.is_server_control_connection:
+                await self.server.register_connection(self)
 
             # 检查是否来自MQTT连接
             request_path = ws.request.path
@@ -212,8 +220,13 @@ class ConnectionHandler:
             self.sample_rate = self.welcome_msg["audio_params"]["sample_rate"]
             self.logger.bind(tag=TAG).info(f"配置输出音频采样率为: {self.sample_rate}")
 
-            # 在后台初始化配置和组件（完全不阻塞主循环）
-            asyncio.create_task(self._background_initialize())
+            # 服务端控制连接只处理 server 指令，不做设备组件初始化
+            if self.is_server_control_connection:
+                self.need_bind = False
+                self.bind_completed_event.set()
+            else:
+                # 在后台初始化配置和组件（完全不阻塞主循环）
+                asyncio.create_task(self._background_initialize())
 
             try:
                 async for message in self.websocket:
@@ -1309,6 +1322,9 @@ class ConnectionHandler:
     async def close(self, ws=None):
         """资源清理方法"""
         try:
+            if self.server and not self.is_server_control_connection:
+                await self.server.unregister_connection(self)
+
             # 清理 VAD 连接资源
             if (
                     hasattr(self, "vad")
@@ -1461,6 +1477,15 @@ class ConnectionHandler:
             self.close_after_chat = True
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"Chat and close error: {str(e)}")
+
+    async def handle_manual_text_input(self, text: str, interrupt: bool = True, audio_data=None):
+        """处理来自管理页面的用户输入。"""
+        self.last_activity_time = time.time() * 1000
+        if interrupt:
+            await handleAbortMessage(self)
+        enqueue_user_report(self, text, audio_data)
+        self.client_abort = False
+        await startToChat(self, text)
 
     async def _check_timeout(self):
         """检查连接超时"""

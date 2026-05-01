@@ -24,6 +24,7 @@ import xiaozhi.common.user.UserDetail;
 import xiaozhi.common.utils.Result;
 import xiaozhi.modules.device.dto.DeviceManualAddDTO;
 import xiaozhi.modules.device.dto.DeviceRegisterDTO;
+import xiaozhi.modules.device.dto.DeviceTextChatDTO;
 import xiaozhi.modules.device.dto.DeviceToolsCallReqDTO;
 import xiaozhi.modules.device.dto.DeviceUnBindDTO;
 import xiaozhi.modules.device.dto.DeviceUpdateDTO;
@@ -158,5 +159,15 @@ public class DeviceController {
         Result<Object> response = new Result<Object>();
         response.setMsg("Tools called successfully");
         return response.ok(result);
+    }
+
+    @PostMapping("/text-chat/{deviceId}")
+    @Operation(summary = "向在线设备发送文本对话")
+    @RequiresPermissions("sys:role:normal")
+    public Result<String> sendTextChat(@PathVariable String deviceId,
+            @Valid @RequestBody DeviceTextChatDTO request) {
+        UserDetail user = SecurityUser.getUser();
+        String targetWs = deviceService.sendTextChat(user.getId(), deviceId, request.getText(), request.getInterrupt());
+        return new Result<String>().ok(targetWs);
     }
 }

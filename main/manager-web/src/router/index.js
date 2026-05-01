@@ -61,6 +61,17 @@ const routes = [
       return import('../views/DeviceManagement.vue')
     }
   },
+  {
+    path: '/device-text-chat',
+    name: 'DeviceTextChat',
+    component: function () {
+      return import('../views/DeviceTextChat.vue')
+    },
+    meta: {
+      requiresAuth: true,
+      title: '设备文本对话'
+    }
+  },
   // 添加用户管理路由
   {
     path: '/user-management',
@@ -229,7 +240,7 @@ VueRouter.prototype.push = function push(location) {
 }
 
 // 需要登录才能访问的路由
-const protectedRoutes = ['home', 'RoleConfig', 'DeviceManagement', 'UserManagement', 'ModelConfig', 'KnowledgeBaseManagement', 'KnowledgeFileUpload']
+const protectedRoutes = ['home', 'RoleConfig', 'DeviceManagement', 'DeviceTextChat', 'UserManagement', 'ModelConfig', 'KnowledgeBaseManagement', 'KnowledgeFileUpload']
 
 // 路由守卫
 router.beforeEach((to, from, next) => {

@@ -44,6 +44,8 @@ class WebSocketServer:
         self.config = config
         self.logger = setup_logging()
         self.config_lock = asyncio.Lock()
+        self.connection_lock = asyncio.Lock()
+        self.active_connections = {}
         modules = initialize_modules(
             self.logger,
             self.config,
@@ -142,6 +144,38 @@ class WebSocketServer:
                 self.logger.bind(tag=TAG).error(
                     f"服务器端强制关闭连接时出错: {close_error}"
                 )
+
+    async def register_connection(self, handler: ConnectionHandler):
+        device_id = getattr(handler, "device_id", None)
+        if not device_id:
+            return
+        async with self.connection_lock:
+            self.active_connections[device_id] = handler
+        self.logger.bind(tag=TAG).info(f"注册在线设备连接: {device_id}")
+
+    async def unregister_connection(self, handler: ConnectionHandler):
+        device_id = getattr(handler, "device_id", None)
+        if not device_id:
+            return
+        async with self.connection_lock:
+            current_handler = self.active_connections.get(device_id)
+            if current_handler is handler:
+                self.active_connections.pop(device_id, None)
+        self.logger.bind(tag=TAG).info(f"移除在线设备连接: {device_id}")
+
+    async def send_text_to_device(self, device_id: str, text: str, interrupt: bool = True):
+        async with self.connection_lock:
+            handler = self.active_connections.get(device_id)
+
+        if handler is None:
+            return False, "目标设备当前不在线"
+
+        try:
+            await handler.handle_manual_text_input(text, interrupt=interrupt)
+            return True, "文本消息已投递到设备"
+        except Exception as e:
+            self.logger.bind(tag=TAG).error(f"向设备发送文本消息失败: device_id={device_id}, error={e}")
+            return False, f"发送失败: {e}"
 
     async def _http_response(self, websocket, request_headers):
         # 检查是否为 WebSocket 升级请求

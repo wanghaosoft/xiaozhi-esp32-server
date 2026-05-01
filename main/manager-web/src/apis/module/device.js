@@ -105,4 +105,20 @@ export default {
                 });
             }).send();
     },
+    sendTextChat(deviceId, payload, callback) {
+        RequestService.sendRequest()
+            .url(`${getServiceUrl()}/device/text-chat/${deviceId}`)
+            .method('POST')
+            .data(payload)
+            .success((res) => {
+                RequestService.clearRequestTime();
+                callback(res);
+            })
+            .networkFail((err) => {
+                console.error('发送设备文本对话失败:', err);
+                RequestService.reAjaxFun(() => {
+                    this.sendTextChat(deviceId, payload, callback);
+                });
+            }).send();
+    },
 }

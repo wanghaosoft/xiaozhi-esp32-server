@@ -1,10 +1,8 @@
-import asyncio
 import json
 from typing import Dict, Any
 
 from core.handle.textMessageHandler import TextMessageHandler
 from core.handle.textMessageType import TextMessageType
-from core.providers.tools.device_mcp import handle_mcp_message
 
 TAG = __name__
 
@@ -90,3 +88,45 @@ class ServerTextMessageHandler(TextMessageHandler):
         # 重启服务器
         elif msg_json["action"] == "restart":
             await conn.handle_restart(msg_json)
+        elif msg_json["action"] == "text_chat":
+            if not conn.server:
+                await conn.websocket.send(
+                    json.dumps(
+                        {
+                            "type": "server",
+                            "status": "error",
+                            "message": "无法获取服务器实例",
+                            "content": {"action": "text_chat"},
+                        }
+                    )
+                )
+                return
+
+            device_id = msg_json.get("content", {}).get("device_id", "")
+            text = msg_json.get("content", {}).get("text", "")
+            interrupt = msg_json.get("content", {}).get("interrupt", True)
+
+            if not device_id or not text:
+                await conn.websocket.send(
+                    json.dumps(
+                        {
+                            "type": "server",
+                            "status": "error",
+                            "message": "device_id 和 text 不能为空",
+                            "content": {"action": "text_chat"},
+                        }
+                    )
+                )
+                return
+
+            success, message = await conn.server.send_text_to_device(device_id, text, interrupt)
+            await conn.websocket.send(
+                json.dumps(
+                    {
+                        "type": "server",
+                        "status": "success" if success else "error",
+                        "message": message,
+                        "content": {"action": "text_chat", "device_id": device_id},
+                    }
+                )
+            )

@@ -61,6 +61,9 @@
               </el-table-column>
               <el-table-column :label="$t('device.operation')" align="center">
                 <template slot-scope="scope">
+                  <el-button size="mini" type="text" @click="goToTextChat(scope.row)">
+                    文本对话
+                  </el-button>
                   <el-button size="mini" type="text" @click="handleUnbind(scope.row.device_id)">
                     {{ $t('device.unbind') }}
                   </el-button>
@@ -339,6 +342,18 @@ export default {
             });
           }
         });
+      });
+    },
+    goToTextChat(row) {
+      this.$router.push({
+        path: '/device-text-chat',
+        query: {
+          agentId: this.currentAgentId,
+          deviceId: row.device_id,
+          macAddress: row.macAddress,
+          model: row.model,
+          status: row.deviceStatus || 'offline'
+        }
       });
     },
     handleGenertor(row) {
