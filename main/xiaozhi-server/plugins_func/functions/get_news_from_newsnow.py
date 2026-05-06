@@ -93,18 +93,13 @@ GET_NEWS_FROM_NEWSNOW_FUNCTION_DESC = {
     "type": "function",
     "function": {
         "name": "get_news_from_newsnow",
-        "description": (
-            "获取最新新闻，随机选择一条新闻进行播报。"
-            f"用户可以选择不同的新闻源，标准的名称是：{example_sources_str}"
-            "例如用户要求百度新闻，其实就是百度热搜。如果没有指定，默认从澎湃新闻获取。"
-            "用户可以要求获取详细内容，此时会获取新闻的详细内容。"
-        ),
+        "description": "当用户要求查看或收听新闻时调用（如'来条新闻''今天有什么新闻'）。",
         "parameters": {
             "type": "object",
             "properties": {
                 "source": {
                     "type": "string",
-                    "description": f"新闻源的标准中文名称，例如{example_sources_str}等。可选参数，如果不提供则使用默认新闻源",
+                    "description": "新闻源名称，如'澎湃新闻'、'百度热搜'、'IT之家'等。可选参数",
                 },
                 "detail": {
                     "type": "boolean",
@@ -233,7 +228,7 @@ def get_news_from_newsnow(
                 # f"新闻来源: {source_name}\n"
                 f"详细内容: {detail_content}\n\n"
                 f"(请对上述新闻内容进行总结，提取关键信息，以自然、流畅的方式向用户播报，"
-                f"不要提及这是总结，就像是在讲述一个完整的新闻故事)"
+                f"不要提及这是总结，就像是在讲述一个完整的新闻)"
             )
 
             return ActionResponse(Action.REQLLM, detail_report, None)
