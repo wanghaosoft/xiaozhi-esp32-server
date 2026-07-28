@@ -68,12 +68,12 @@ class ServerPluginExecutor(ToolExecutor):
 
         expanded = []
         for name in config_functions:
-            if name in all_function_registry:
-                # 精确匹配函数名，直接保留
-                expanded.append(name)
-            elif name in module_func_map:
+            if name in module_func_map:
                 # 模块名，展开为该模块下所有注册函数名
                 expanded.extend(module_func_map[name])
+            elif name in all_function_registry:
+                # 精确匹配函数名，直接保留
+                expanded.append(name)
             else:
                 # 未知名称，保留原值（可能是 MCP 或其他工具）
                 expanded.append(name)
