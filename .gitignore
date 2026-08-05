@@ -197,3 +197,6 @@ uploadfile
 main/digital-human/wakeword_runtime/models
 main/digital-human/wakeword_runtime/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01
 sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2
+
+# 本地嵌套SDK仓库（独立clone，不作为gitlink纳入主仓库）
+douyin-live-web-fetcher-dev/alibabacloud-nls-python-sdk/
