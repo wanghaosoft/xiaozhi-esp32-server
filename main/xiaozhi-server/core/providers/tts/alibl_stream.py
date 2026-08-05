@@ -80,6 +80,9 @@ class TTSProvider(TTSProviderBase):
                 return self.ws
             logger.bind(tag=TAG).debug("开始建立新连接...")
 
+            # 建立新连接前取消旧监听任务
+            await self._cancel_monitor_task()
+
             self.ws = await websockets.connect(
                 self.ws_url,
                 additional_headers=self.header,
@@ -124,6 +127,8 @@ class TTSProvider(TTSProviderBase):
                 )
 
                 if message.sentence_type == SentenceType.FIRST:
+                    # 重置流式处理状态
+                    self.reset_stream_state()
                     # 初始化会话
                     try:
                         if not getattr(self.conn, "sentence_id", None): 
@@ -194,22 +199,24 @@ class TTSProvider(TTSProviderBase):
 
             # 过滤Markdown
             filtered_text = MarkdownCleaner.clean_markdown(text)
-            if self._correct_words_pattern:
-                filtered_text = self._correct_words_pattern.sub(lambda m: self.correct_words[m.group(0)], filtered_text)
 
             if filtered_text:
-                # 发送continue-task消息
-                continue_task_message = {
-                    "header": {
-                        "action": "continue-task",
-                        "task_id": self.conn.sentence_id,
-                        "streaming": "duplex",
-                    },
-                    "payload": {"input": {"text": filtered_text}},
-                }
+                # 使用滑动窗口匹配处理跨分片的替换词
+                confirmed_texts, self._pending_prefix = self._match_stream_text(filtered_text)
 
-                await self.ws.send(json.dumps(continue_task_message))
-                self.last_active_time = time.time()
+                # 发送每个确定的文本片段
+                for txt in confirmed_texts:
+                    if txt and self.ws:
+                        continue_task_message = {
+                            "header": {
+                                "action": "continue-task",
+                                "task_id": self.conn.sentence_id,
+                                "streaming": "duplex",
+                            },
+                            "payload": {"input": {"text": txt}},
+                        }
+                        await self.ws.send(json.dumps(continue_task_message))
+                        self.last_active_time = time.time()
             return
         except Exception as e:
             logger.bind(tag=TAG).error(f"发送TTS文本失败: {str(e)}")
@@ -302,16 +309,7 @@ class TTSProvider(TTSProviderBase):
         """清理资源"""
         await super().close()
         self.activate_session = False
-        # 取消监听任务
-        if self._monitor_task:
-            try:
-                self._monitor_task.cancel()
-                await self._monitor_task
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:
-                logger.bind(tag=TAG).warning(f"关闭时取消监听任务错误: {e}")
-            self._monitor_task = None
+        await self._cancel_monitor_task()
 
         # 关闭WebSocket连接
         if self.ws:
@@ -321,6 +319,18 @@ class TTSProvider(TTSProviderBase):
                 pass
             self.ws = None
             self.last_active_time = None
+    
+    async def _cancel_monitor_task(self):
+        """取消监听任务"""
+        if self._monitor_task and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.bind(tag=TAG).warning(f"取消监听任务错误: {e}")
+        self._monitor_task = None
 
     async def _start_monitor_tts_response(self):
         """监听TTS响应 - 长期运行"""

@@ -1,7 +1,19 @@
 <template>
-    <el-dialog
-        :title="$t('chatHistory.with') + agentName + $t('chatHistory.dialogTitle') + (currentMacAddress ? '[' + currentMacAddress + ']' : '')"
-        :visible.sync="dialogVisible" width="80%" :before-close="handleClose" custom-class="chat-history-dialog">
+    <CustomDialog
+        :title="$t('chatHistory.with') + agentName + $t('chatHistory.dialogTitle')"
+        :visible.sync="dialogVisible"
+        width="80%"
+        :footer="false"
+        :close-on-click-modal="false"
+        custom-class="chat-history-dialog">
+        <template v-slot:title>
+            <span style="font-size: 18px;">
+                {{ $t('chatHistory.with') + agentName + $t('chatHistory.dialogTitle') }}
+                <template v-if="currentMacAddress">
+                    [<MacAddressMask :macAddress="currentMacAddress" />]
+                </template>
+            </span>
+        </template>
         <div class="chat-container">
             <div class="session-list" @scroll="handleScroll">
                 <div v-for="session in sessions" :key="session.sessionId" class="session-item"
@@ -69,12 +81,14 @@
                 {{ $t('chatHistory.downloadCurrentSession') }}
             </el-button>
         </div>
-    </el-dialog>
+    </CustomDialog>
 </template>
 
 <script>
 import { debounce } from '@/utils'
 import Api from '@/apis/api';
+import CustomDialog from '@/components/CustomDialog.vue';
+import MacAddressMask from '@/components/MacAddressMask.vue';
 
 export default {
     name: 'ChatHistoryDialog',
@@ -109,6 +123,10 @@ export default {
             audioElement: null,
             expandedToolResults: {} // 跟踪工具结果的展开状态
         };
+    },
+    components: {
+        CustomDialog,
+        MacAddressMask,
     },
     watch: {
         visible(val) {
@@ -229,9 +247,6 @@ export default {
             this.isFirstLoad = true;
             this.expandedToolResults = {};
         },
-        handleClose() {
-            this.dialogVisible = false;
-        },
         loadSessions() {
             if (this.loading || (!this.isFirstLoad && !this.hasMore)) {
                 return;
@@ -267,6 +282,13 @@ export default {
                     if (this.messages.length > 0 && this.messages[0].macAddress) {
                         this.currentMacAddress = this.messages[0].macAddress;
                     }
+                    // 更新会话列表中的聊天记录数量
+                    this.sessions = this.sessions.map(item => {
+                        if (item.sessionId === session.sessionId) {
+                            item.chatCount = this.messages.length;
+                        }
+                        return item;
+                    })
                 }
             });
         },
@@ -426,7 +448,7 @@ export default {
 }
 
 .session-info {
-    flex: 1;
+    width: calc(100% - 50px);
 }
 
 .session-time {
@@ -614,11 +636,6 @@ export default {
     max-width: 85vw;
     border-radius: 12px;
     overflow: hidden;
-}
-
-.chat-history-dialog .el-dialog__header {
-    background-color: #e6f7ff;
-    padding: 15px 20px;
 }
 
 .chat-history-dialog .el-dialog__body {

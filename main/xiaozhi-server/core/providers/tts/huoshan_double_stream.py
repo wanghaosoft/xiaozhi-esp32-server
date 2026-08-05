@@ -229,6 +229,10 @@ class TTSProvider(TTSProviderBase):
                     except:
                         pass
             logger.bind(tag=TAG).debug("开始建立新连接...")
+
+            # 建立新连接前取消旧监听任务
+            await self._cancel_monitor_task()
+
             ws_header = {
                 "X-Api-App-Key": self.appId,
                 "X-Api-Access-Key": self.access_token,
@@ -300,6 +304,8 @@ class TTSProvider(TTSProviderBase):
                 )
 
                 if message.sentence_type == SentenceType.FIRST:
+                    # 重置流式处理状态
+                    self.reset_stream_state()
                     # 初始化参数
                     try:
                         if not getattr(self.conn, "sentence_id", None): 
@@ -370,12 +376,16 @@ class TTSProvider(TTSProviderBase):
 
             #  过滤Markdown
             filtered_text = MarkdownCleaner.clean_markdown(text)
-            if self._correct_words_pattern:
-                filtered_text = self._correct_words_pattern.sub(lambda m: self.correct_words[m.group(0)], filtered_text)
 
             if filtered_text:
-                # 发送文本
-                await self.send_text(self.voice, filtered_text, self.conn.sentence_id)
+                # 使用滑动窗口匹配处理跨分片的替换词
+                confirmed_texts, self._pending_prefix = self._match_stream_text(filtered_text)
+
+                # 发送每个确定的文本片段
+                for txt in confirmed_texts:
+                    if txt and self.ws:
+                        await self.send_text(self.voice, txt, self.conn.sentence_id)
+
             return
         except Exception as e:
             logger.bind(tag=TAG).error(f"发送TTS文本失败: {str(e)}")
@@ -466,16 +476,7 @@ class TTSProvider(TTSProviderBase):
         """资源清理方法"""
         await super().close()
         self.activate_session = False
-        # 取消监听任务
-        if self._monitor_task:
-            try:
-                self._monitor_task.cancel()
-                await self._monitor_task
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:
-                logger.bind(tag=TAG).warning(f"关闭时取消监听任务错误: {e}")
-            self._monitor_task = None
+        await self._cancel_monitor_task()
 
         if self.ws:
             try:
@@ -514,9 +515,9 @@ class TTSProvider(TTSProviderBase):
                         json_data = json.loads(res.payload.decode("utf-8"))
                         self.tts_text = json_data.get("text", "")
                         logger.bind(tag=TAG).debug(f"句子语音生成开始: {self.tts_text}")
-                        self.tts_audio_queue.put(
-                            (SentenceType.FIRST, [], self.tts_text)
-                        )
+                        # 将TTS服务返回的替换后文本还原为原始文本，用于字幕显示
+                        display_text = self._restore_original_text(self.tts_text)
+                        self.tts_audio_queue.put((SentenceType.FIRST, [], display_text))
                     elif (
                         res.optional.event == EVENT_TTSResponse
                         and res.header.message_type == AUDIO_ONLY_RESPONSE
@@ -724,6 +725,18 @@ class TTSProvider(TTSProviderBase):
 
     def wav_to_opus_data_audio_raw_stream(self, raw_data_var, is_end=False, callback: Callable[[Any], Any]=None):
         return self.opus_encoder.encode_pcm_to_opus_stream(raw_data_var, is_end, callback=callback)
+
+    async def _cancel_monitor_task(self):
+        """取消监听任务"""
+        if self._monitor_task and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.bind(tag=TAG).warning(f"取消监听任务错误: {e}")
+        self._monitor_task = None
 
     def to_tts(self, text: str) -> list:
         """非流式生成音频数据，用于生成音频及测试场景

@@ -42,7 +42,7 @@ TAG = __name__
 class WebSocketServer:
     def __init__(self, config: dict):
         self.config = config
-        self.logger = setup_logging()
+        self.logger = setup_logging(config)
         self.config_lock = asyncio.Lock()
         self.connection_lock = asyncio.Lock()
         self.active_connections = {}
@@ -95,7 +95,7 @@ class WebSocketServer:
             parsed_url = urlparse(request_path)
             query_params = parse_qs(parsed_url.query)
             if "device-id" not in query_params:
-                await websocket.send("端口正常，如需测试连接，请使用test_page.html")
+                await websocket.send("端口正常，如需测试连接，请启动digital-human测试")
                 await websocket.close()
                 return
             else:

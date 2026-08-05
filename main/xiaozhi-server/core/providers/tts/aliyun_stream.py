@@ -193,6 +193,9 @@ class TTSProvider(TTSProviderBase):
                 return self.ws
             logger.bind(tag=TAG).debug("开始建立新连接...")
 
+            # 建立新连接前取消旧监听任务
+            await self._cancel_monitor_task()
+
             self.ws = await websockets.connect(
                 self.ws_url,
                 additional_headers={"X-NLS-Token": self.token},
@@ -233,6 +236,8 @@ class TTSProvider(TTSProviderBase):
                 )
 
                 if message.sentence_type == SentenceType.FIRST:
+                    # 重置流式处理状态
+                    self.reset_stream_state()
                     # 初始化参数
                     try:
                         logger.bind(tag=TAG).debug("开始启动TTS会话...")
@@ -295,21 +300,26 @@ class TTSProvider(TTSProviderBase):
                 logger.bind(tag=TAG).warning(f"WebSocket连接不存在，终止发送文本")
                 return
             filtered_text = MarkdownCleaner.clean_markdown(text)
-            if self._correct_words_pattern:
-                filtered_text = self._correct_words_pattern.sub(lambda m: self.correct_words[m.group(0)], filtered_text)
+
             if filtered_text:
-                run_request = {
-                    "header": {
-                        "message_id": uuid.uuid4().hex,
-                        "task_id": self.task_id,
-                        "namespace": "FlowingSpeechSynthesizer",
-                        "name": "RunSynthesis",
-                        "appkey": self.appkey,
-                    },
-                    "payload": {"text": filtered_text},
-                }
-                await self.ws.send(json.dumps(run_request))
-                self.last_active_time = time.time()
+                # 使用滑动窗口匹配处理跨分片的替换词
+                confirmed_texts, self._pending_prefix = self._match_stream_text(filtered_text)
+
+                # 发送每个确定的文本片段
+                for txt in confirmed_texts:
+                    if txt and self.ws:
+                        run_request = {
+                            "header": {
+                                "message_id": uuid.uuid4().hex,
+                                "task_id": self.task_id,
+                                "namespace": "FlowingSpeechSynthesizer",
+                                "name": "RunSynthesis",
+                                "appkey": self.appkey,
+                            },
+                            "payload": {"text": txt},
+                        }
+                        await self.ws.send(json.dumps(run_request))
+                        self.last_active_time = time.time()
             return
 
         except Exception as e:
@@ -394,15 +404,7 @@ class TTSProvider(TTSProviderBase):
         """资源清理"""
         await super().close()
         self.activate_session = False
-        if self._monitor_task:
-            try:
-                self._monitor_task.cancel()
-                await self._monitor_task
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:
-                logger.bind(tag=TAG).warning(f"关闭时取消监听任务错误: {e}")
-            self._monitor_task = None
+        await self._cancel_monitor_task()
 
         if self.ws:
             try:
@@ -496,6 +498,18 @@ class TTSProvider(TTSProviderBase):
             sample_rate=self.conn.sample_rate,
             opus_encoder=None,
         )
+
+    async def _cancel_monitor_task(self):
+        """取消监听任务"""
+        if self._monitor_task and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.bind(tag=TAG).warning(f"取消监听任务错误: {e}")
+        self._monitor_task = None
 
     def to_tts(self, text: str) -> list:
         """非流式TTS处理，用于测试及保存音频文件的场景"""
