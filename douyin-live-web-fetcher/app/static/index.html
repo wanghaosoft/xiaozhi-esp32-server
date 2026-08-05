@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>直播中控大脑</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="hero dashboard-shell">
+      <div class="hero-head">
+        <div>
+          <p class="eyebrow">Douyin Live Brain</p>
+          <h1>直播中控大脑</h1>
+          <p class="lead">基于三轨队列、热度感知和结构化指令分发的小智直播中控。</p>
+        </div>
+        <div class="status-chip" id="healthStatus">加载中</div>
+      </div>
+
+      <section class="metrics-grid" id="metricsGrid"></section>
+
+      <section class="panel-grid">
+        <article class="panel card-panel">
+          <div class="panel-head">
+            <h2>基础设置</h2>
+            <button id="saveSettingsBtn" type="button">保存设置</button>
+          </div>
+          <div class="form-grid">
+            <label>
+              <span>直播间 ID</span>
+              <input id="roomId" type="text">
+            </label>
+            <label>
+              <span>直播阶段</span>
+              <select id="stage"></select>
+            </label>
+            <label>
+              <span>机器人状态</span>
+              <select id="robotState"></select>
+            </label>
+            <label class="full-span">
+              <span>当前话题</span>
+              <input id="currentTopic" type="text">
+            </label>
+            <label class="full-span">
+              <span>房间标题</span>
+              <input id="roomTitle" type="text">
+            </label>
+            <label>
+              <span>小智地址</span>
+              <input id="xiaozhiBaseUrl" type="text">
+            </label>
+            <label>
+              <span>服务密钥</span>
+              <input id="xiaozhiSecret" type="password">
+            </label>
+            <label>
+              <span>设备ID</span>
+              <input id="deviceId" type="text">
+            </label>
+            <label>
+              <span>智能体ID</span>
+              <input id="agentId" type="text">
+            </label>
+            <label>
+              <span>MAC 地址</span>
+              <input id="macAddress" type="text">
+            </label>
+            <label>
+              <span>中控阻塞</span>
+              <select id="blocked">
+                <option value="false">否</option>
+                <option value="true">是</option>
+              </select>
+            </label>
+          </div>
+        </article>
+
+        <article class="panel card-panel">
+          <div class="panel-head">
+            <h2>人工干预</h2>
+            <button id="sendManualBtn" type="button">插入紧急指令</button>
+          </div>
+          <div class="form-grid">
+            <label class="full-span">
+              <span>人工脚本</span>
+              <textarea id="manualText" rows="6"></textarea>
+            </label>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel-grid lower-grid">
+        <article class="panel data-panel">
+          <div class="panel-head">
+            <h2>最近事件</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>时间</th><th>类型</th><th>人物</th><th>内容</th><th>热度</th></tr></thead>
+              <tbody id="eventsTable"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel data-panel">
+          <div class="panel-head">
+            <h2>最近指令</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>时间</th><th>类型</th><th>轨道</th><th>状态</th><th>错误</th></tr></thead>
+              <tbody id="commandsTable"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 import javax.crypto.Mac;
@@ -888,6 +889,18 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
 
     @Override
     public String sendTextChat(Long userId, String deviceId, String text, Boolean interrupt) {
+        DeviceEntity device = resolveOwnedDevice(userId, deviceId);
+        return sendTextChat(device, text, interrupt);
+    }
+
+    @Override
+    public String sendTextChatByExternal(String deviceId, String agentId, String macAddress, String text,
+            Boolean interrupt) {
+        DeviceEntity device = resolveExternalDevice(deviceId, agentId, macAddress);
+        return sendTextChat(device, text, interrupt);
+    }
+
+    private DeviceEntity resolveOwnedDevice(Long userId, String deviceId) {
         DeviceEntity device = baseDao.selectById(deviceId);
         if (device == null) {
             throw new RenException(ErrorCode.DEVICE_NOT_EXIST);
@@ -895,7 +908,49 @@ public class DeviceServiceImpl extends BaseServiceImpl<DeviceDao, DeviceEntity> 
         if (!device.getUserId().equals(userId)) {
             throw new RenException(ErrorCode.NO_PERMISSION);
         }
+        return device;
+    }
 
+    private DeviceEntity resolveExternalDevice(String deviceId, String agentId, String macAddress) {
+        if (StringUtils.isNotBlank(deviceId)) {
+            DeviceEntity device = baseDao.selectById(deviceId.trim());
+            if (device == null) {
+                throw new RenException(ErrorCode.DEVICE_NOT_EXIST);
+            }
+            if (StringUtils.isNotBlank(agentId) && !StringUtils.equals(agentId.trim(), device.getAgentId())) {
+                throw new RenException("deviceId 与 agentId 不匹配");
+            }
+            if (StringUtils.isNotBlank(macAddress)
+                    && !StringUtils.equalsIgnoreCase(normalizeMacAddress(macAddress), normalizeMacAddress(device.getMacAddress()))) {
+                throw new RenException("deviceId 与 macAddress 不匹配");
+            }
+            return device;
+        }
+
+        if (StringUtils.isBlank(agentId) || StringUtils.isBlank(macAddress)) {
+            throw new RenException("请提供 deviceId，或同时提供 agentId 与 macAddress");
+        }
+
+        String normalizedMacAddress = normalizeMacAddress(macAddress);
+        QueryWrapper<DeviceEntity> wrapper = new QueryWrapper<>();
+        wrapper.eq("agent_id", agentId.trim());
+        wrapper.apply("LOWER(mac_address) = {0}", normalizedMacAddress);
+        List<DeviceEntity> candidates = baseDao.selectList(wrapper);
+
+        if (candidates.isEmpty()) {
+            throw new RenException(ErrorCode.DEVICE_NOT_EXIST);
+        }
+        if (candidates.size() > 1) {
+            throw new RenException("agentId 与 macAddress 匹配到多台设备，请改用 deviceId 精确指定");
+        }
+        return candidates.get(0);
+    }
+
+    private String normalizeMacAddress(String macAddress) {
+        return StringUtils.trimToEmpty(macAddress).toLowerCase(Locale.ROOT);
+    }
+
+    private String sendTextChat(DeviceEntity device, String text, Boolean interrupt) {
         String normalizedText = text == null ? "" : text.trim();
         if (StringUtils.isBlank(normalizedText)) {
             throw new RenException("文本内容不能为空");

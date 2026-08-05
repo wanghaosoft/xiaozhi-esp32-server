@@ -69,6 +69,22 @@ Web 管理后台中进入：
 
 说明：`data` 为实际投递成功的 Python WebSocket 服务地址。
 
+### 外部调用接口
+
+适用于直播弹幕、互动消息、中控系统等服务端直接投递文本，不依赖前端页面。
+
+- 后端直连地址：`POST /xiaozhi/device/external/text-chat`
+- 前端代理地址：`POST /xiaozhi/device/external/text-chat`
+- 鉴权方式：`Authorization: Bearer <server.secret>`
+- 设备定位：优先传 `deviceId`，或传 `agentId + macAddress`
+- 完整对接说明见：`docs/dev/external-device-text-chat-api.md`
+
+说明：
+
+- 若直连 manager-api，默认地址为 `http://<host>:8002/xiaozhi/device/external/text-chat`
+- 若走 manager-web 开发代理，默认地址为 `http://<host>:8001/xiaozhi/device/external/text-chat`
+- `http://<host>:8001/device/external/text-chat` 是错误地址，因为缺少 `/xiaozhi`
+
 ## 实现说明
 
 ### Java 管理后台
@@ -76,10 +92,15 @@ Web 管理后台中进入：
 主要改动：
 
 - `manager-api` 新增接口：`DeviceController.sendTextChat(...)`
+- `manager-api` 新增外部接口：`DeviceController.sendTextChatByExternal(...)`
 - `DeviceServiceImpl.sendTextChat(...)` 负责：
   - 校验设备归属
   - 遍历配置的 Python WebSocket 服务地址
   - 通过已有 `server` 控制消息链路发送 `text_chat` 指令
+- `DeviceServiceImpl.sendTextChatByExternal(...)` 负责：
+  - 使用 `deviceId` 或 `agentId + macAddress` 精准定位设备
+  - 复用同一条服务端投递链路
+  - 通过 `server.secret` 进行服务间鉴权
 
 ### Python 运行时
 
@@ -100,6 +121,7 @@ Web 管理后台中进入：
 - 仅对在线设备使用；若设备不在线，会返回发送失败
 - 默认保留 `interrupt=true`，这样更符合“文本代替当前语音输入”的交互预期
 - 若你希望排队而不是打断，可将 `interrupt` 设为 `false`
+- 外部系统对接时优先传 `deviceId`；只有在无法拿到设备主键时，再使用 `agentId + macAddress`
 
 ## 不影响现有功能的原因
 

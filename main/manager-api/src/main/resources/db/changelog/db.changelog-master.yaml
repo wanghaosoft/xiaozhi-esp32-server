@@ -241,6 +241,13 @@ databaseChangeLog:
             encoding: utf8
             path: classpath:db/changelog/202506261637.sql
   - changeSet:
+      id: 202606010410
+      author: Copilot
+      changes:
+        - sqlFile:
+            encoding: utf8
+            path: classpath:db/changelog/202606010410.sql
+  - changeSet:
       id: 202507101203
       author: luruxian
       changes:

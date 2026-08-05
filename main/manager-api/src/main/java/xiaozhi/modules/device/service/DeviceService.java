@@ -138,4 +138,9 @@ public interface DeviceService extends BaseService<DeviceEntity> {
      */
     String sendTextChat(Long userId, String deviceId, String text, Boolean interrupt);
 
+    /**
+     * 外部系统向在线设备发送文本对话
+     */
+    String sendTextChatByExternal(String deviceId, String agentId, String macAddress, String text, Boolean interrupt);
+
 }

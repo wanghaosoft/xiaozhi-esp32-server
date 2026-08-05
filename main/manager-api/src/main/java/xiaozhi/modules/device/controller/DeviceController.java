@@ -28,6 +28,7 @@ import xiaozhi.modules.device.dto.DeviceTextChatDTO;
 import xiaozhi.modules.device.dto.DeviceToolsCallReqDTO;
 import xiaozhi.modules.device.dto.DeviceUnBindDTO;
 import xiaozhi.modules.device.dto.DeviceUpdateDTO;
+import xiaozhi.modules.device.dto.ExternalDeviceTextChatDTO;
 import xiaozhi.modules.device.entity.DeviceEntity;
 import xiaozhi.modules.device.service.DeviceService;
 import xiaozhi.modules.security.user.SecurityUser;
@@ -168,6 +169,18 @@ public class DeviceController {
             @Valid @RequestBody DeviceTextChatDTO request) {
         UserDetail user = SecurityUser.getUser();
         String targetWs = deviceService.sendTextChat(user.getId(), deviceId, request.getText(), request.getInterrupt());
+        return new Result<String>().ok(targetWs);
+    }
+
+    @PostMapping("/external/text-chat")
+    @Operation(summary = "外部系统向在线设备发送文本对话")
+    public Result<String> sendTextChatByExternal(@Valid @RequestBody ExternalDeviceTextChatDTO request) {
+        String targetWs = deviceService.sendTextChatByExternal(
+                request.getDeviceId(),
+                request.getAgentId(),
+                request.getMacAddress(),
+                request.getText(),
+                request.getInterrupt());
         return new Result<String>().ok(targetWs);
     }
 }
