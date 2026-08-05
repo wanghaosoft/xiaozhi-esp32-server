@@ -200,3 +200,12 @@ sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2
 
 # 本地嵌套SDK仓库（独立clone，不作为gitlink纳入主仓库）
 douyin-live-web-fetcher-dev/alibabacloud-nls-python-sdk/
+
+# 本地直播开发工具（含密钥与构建产物，不入库）
+douyin-live-web-fetcher-dev/
+
+# Python 缓存与二进制产物
+__pycache__/
+*.py[cod]
+*.pcm
+*.exe
